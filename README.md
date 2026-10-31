@@ -11,9 +11,6 @@ src-tauri/       Tauri 2 backend: commands + 2 Hz snapshot events
 src/             SvelteKit (SPA) + Tailwind 4 + shadcn-svelte frontend
 ```
 
-The `native-egui` branch adds `crates/native/`, a utilitarian egui frontend
-built on the same engine, for comparison.
-
 ## Prerequisites
 
 - Rust (stable) and Node 20+
