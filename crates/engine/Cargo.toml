@@ -2,12 +2,14 @@
 name = "mtr-engine"
 version = "0.1.0"
 edition = "2021"
-description = "Shared tracing engine (wraps trippy-core) for the MTR desktop GUIs"
+description = "UI-independent MTR-style tracing engine (wraps trippy-core)"
 
 [dependencies]
 trippy-core = "0.13"
 trippy-privilege = "0.13"
+trippy-dns = "0.13"
 dns-lookup = "2"
 serde = { version = "1", features = ["derive"] }
-thiserror = "2"
 serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }

@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MTR",
+  "productName": "TraceLens",
+  "mainBinaryName": "tracelens",
   "version": "0.1.0",
-  "identifier": "net.cosmic.mtrgui",
+  "identifier": "global.cosmic.tracelens",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "MTR",
+        "title": "TraceLens",
         "width": 1180,
         "height": 720,
         "minWidth": 760,
@@ -32,6 +33,22 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "MTR-style traceroute and network path diagnostics",
+    "longDescription": "TraceLens continuously traces the network path to a host, showing per-hop loss and latency, who operates each hop, and a plain-English verdict on where problems start.",
+    "category": "Utility",
+    "copyright": "Copyright (c) 2026 Aidan Perry",
+    "licenseFile": "../LICENSE",
+    "linux": {
+      "deb": {
+        "postInstallScript": "packaging/linux/postinst.sh",
+        "depends": [
+          "libcap2-bin"
+        ]
+      },
+      "rpm": {
+        "postInstallScript": "packaging/linux/postinst.sh"
+      }
+    }
   }
 }

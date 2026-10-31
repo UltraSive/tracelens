@@ -1,0 +1,87 @@
+# Builds installers for Linux, macOS (Apple Silicon + Intel) and Windows and attaches them
+# to a draft GitHub release. Trigger by pushing a tag that matches the app version:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# or run it manually from the Actions tab (workflow_dispatch) against an existing tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match tauri.conf.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          app_version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "v$app_version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match tauri.conf.json version v$app_version"
+            exit 1
+          fi
+
+  build:
+    needs: check-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux system dependencies
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform }}-${{ matrix.args }}
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "TraceLens ${{ github.ref_name }}"
+          releaseBody: |
+            ### Downloads
+            - **Windows**: `.msi` or `-setup.exe` (asks for Administrator: raw sockets need it)
+            - **macOS**: `.dmg` (`aarch64` = Apple Silicon, `x64` = Intel). Builds are unsigned: right-click the app, then Open, the first time.
+            - **Linux**: `.deb` / `.rpm` grant the network capability automatically. For the `.AppImage` run `sudo setcap cap_net_raw+ep` on the extracted binary, or use the .deb.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
