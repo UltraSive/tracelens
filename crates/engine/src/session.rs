@@ -25,6 +25,9 @@ const MAX_PATH_EVENTS: usize = 500;
 const PATH_CHANGE_CONFIRM_ROUNDS: u8 = 2;
 /// Addresses seen at a hop within this many rounds are treated as ECMP siblings.
 const ECMP_WINDOW_ROUNDS: u64 = 30;
+/// Rounds after a hop first answers during which its addresses are learned, not logged.
+/// Load-balanced siblings usually all show up in this window.
+const PATH_WARMUP_ROUNDS: u64 = 10;
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 /// trippy distinguishes concurrent traces by an ICMP identifier; keep them unique.
@@ -64,10 +67,13 @@ impl PrivilegeInfo {
 /// within the last [`ECMP_WINDOW_ROUNDS`] rounds, and keeps answering for
 /// [`PATH_CHANGE_CONFIRM_ROUNDS`] consecutive rounds. Alternating between addresses already
 /// seen there is load balancing (ECMP, very common with classic UDP), not a route change.
+/// Nothing is logged for a hop during its first [`PATH_WARMUP_ROUNDS`] rounds.
 #[derive(Default)]
 struct PathTracker {
     round: u64,
     current: HashMap<u8, IpAddr>,
+    /// ttl -> round the hop first answered (for the warm-up)
+    first_round: HashMap<u8, u64>,
     /// ttl -> (candidate address, consecutive rounds, candidate was recently seen)
     pending: HashMap<u8, (IpAddr, u8, bool)>,
     /// (ttl, addr) -> last round that address answered at that hop
@@ -81,6 +87,8 @@ impl PathTracker {
             .last_seen
             .insert((ttl, host), self.round)
             .is_some_and(|r| self.round.saturating_sub(r) <= ECMP_WINDOW_ROUNDS);
+        let first = *self.first_round.entry(ttl).or_insert(self.round);
+        let warming_up = self.round.saturating_sub(first) < PATH_WARMUP_ROUNDS;
         let Some(&cur) = self.current.get(&ttl) else {
             self.current.insert(ttl, host);
             return;
@@ -98,7 +106,7 @@ impl PathTracker {
             let known = entry.2;
             self.pending.remove(&ttl);
             self.current.insert(ttl, host);
-            if !known {
+            if !known && !warming_up {
                 self.events.push(PathEvent {
                     at: now_ms,
                     ttl,
@@ -320,9 +328,8 @@ impl TraceSession {
     pub fn clear(&self) {
         self.tracer.clear();
         let mut p = self.paths.lock().unwrap();
-        p.events.clear();
-        p.pending.clear();
-        p.current.clear();
+        // start learning from scratch, including the warm-up
+        *p = PathTracker::default();
     }
 
     pub fn status(&self) -> TraceStatus {
@@ -473,36 +480,76 @@ mod tests {
         }
     }
 
+    fn ips() -> (IpAddr, IpAddr, IpAddr, IpAddr) {
+        let ip = |s: &str| s.parse().unwrap();
+        (
+            ip("10.0.0.1"),
+            ip("10.0.0.2"),
+            ip("10.0.0.3"),
+            ip("10.0.0.4"),
+        )
+    }
+
     #[test]
     fn path_change_needs_confirmation() {
-        let (a, b): (IpAddr, IpAddr) = ("10.0.0.1".parse().unwrap(), "10.0.0.2".parse().unwrap());
+        let (a, b, ..) = ips();
         let mut p = PathTracker::default();
-        feed(&mut p, 3, &[a, a, b, a, a]); // single blip
+        feed(&mut p, 3, &[a; 12]);
+        feed(&mut p, 3, &[b, a, a]); // single blip
         assert!(p.events.is_empty());
-        feed(&mut p, 3, &[a, a]);
+        feed(&mut p, 3, &[b; 40]);
         let mut q = PathTracker::default();
-        feed(&mut q, 3, &[a, a, a, b, b]);
+        feed(&mut q, 3, &[a; 12]);
+        feed(&mut q, 3, &[b, b]);
         assert_eq!(q.events.len(), 1);
         assert_eq!(
             (q.events[0].from, q.events[0].to, q.events[0].at),
-            (a, b, 5)
+            (a, b, 14)
         );
     }
 
     #[test]
     fn ecmp_alternation_is_not_a_path_change() {
-        let (a, b): (IpAddr, IpAddr) = ("10.0.0.1".parse().unwrap(), "10.0.0.2".parse().unwrap());
+        let (a, b, ..) = ips();
         let mut p = PathTracker::default();
-        // b shows up once early (load-balanced sibling), then traffic flips between them
-        feed(&mut p, 6, &[a, b, a, b, b, a, a, b, b, a, a]);
+        feed(&mut p, 6, &[a; 12]);
+        // b shows up once (load-balanced sibling), then traffic flips between them
+        feed(&mut p, 6, &[b, a, b, b, a, a, b, b, a, a]);
         assert!(p.events.is_empty(), "{:?}", p.events);
     }
 
     #[test]
-    fn returning_after_a_long_absence_is_logged() {
-        let (a, b): (IpAddr, IpAddr) = ("10.0.0.1".parse().unwrap(), "10.0.0.2".parse().unwrap());
+    fn sibling_first_seen_during_warmup_is_not_logged() {
+        let (a, b, ..) = ips();
         let mut p = PathTracker::default();
-        feed(&mut p, 2, &[a, a, b, b]);
+        // the real-world case: the second ECMP address first takes over in round 4
+        feed(&mut p, 6, &[a, a, a, b, b, a]);
+        // ...and keeps alternating long after the warm-up
+        for _ in 0..5 {
+            feed(&mut p, 6, &[a, a, b, b]);
+        }
+        assert!(p.events.is_empty(), "{:?}", p.events);
+    }
+
+    #[test]
+    fn warmup_is_per_hop() {
+        let (a, b, c, d) = ips();
+        let mut p = PathTracker::default();
+        feed(&mut p, 1, &[a; 20]);
+        // hop 9 first answers in round 21: its early switch is still warm-up
+        feed(&mut p, 9, &[b, c, c]);
+        assert!(p.events.is_empty());
+        feed(&mut p, 9, &[c; 10]);
+        feed(&mut p, 9, &[d, d]);
+        assert_eq!(p.events.len(), 1);
+        assert_eq!((p.events[0].ttl, p.events[0].to), (9, d));
+    }
+
+    #[test]
+    fn returning_after_a_long_absence_is_logged() {
+        let (a, b, ..) = ips();
+        let mut p = PathTracker::default();
+        feed(&mut p, 2, &[a; 12]);
         feed(&mut p, 2, &[b; 40]);
         feed(&mut p, 2, &[a, a]);
         assert_eq!(p.events.len(), 2);
