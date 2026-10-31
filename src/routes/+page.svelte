@@ -50,7 +50,7 @@
 	{#if unprivileged}
 		<div class="flex items-start gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-300">
 			<ShieldAlertIcon class="mt-px size-3.5 shrink-0" />
-			<span class="selectable">Running without raw-socket privileges — ICMP/UDP only work if the OS allows unprivileged sockets. {store.env?.hint}</span>
+			<span class="selectable">Running without raw-socket privileges. {store.env?.hint}</span>
 		</div>
 	{/if}
 

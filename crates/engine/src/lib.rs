@@ -130,9 +130,8 @@ pub enum EngineError {
 /// Human-readable advice for when raw sockets are denied on this OS.
 pub fn permission_hint() -> &'static str {
     if cfg!(target_os = "linux") {
-        "Raw sockets need privileges. Either grant the binary CAP_NET_RAW \
-         (sudo setcap cap_net_raw+ep <path-to-binary>) or allow unprivileged ICMP \
-         (sudo sysctl -w net.ipv4.ping_group_range=\"0 2147483647\")."
+        "Tracing needs raw sockets. Grant the binary CAP_NET_RAW once per build: \
+         sudo setcap cap_net_raw+ep <path-to-binary>"
     } else if cfg!(target_os = "windows") {
         "Raw sockets need Administrator. Restart the app with \"Run as administrator\"."
     } else if cfg!(target_os = "macos") {

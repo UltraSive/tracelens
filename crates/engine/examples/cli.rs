@@ -5,7 +5,8 @@ use std::time::Duration;
 fn main() {
     let target = std::env::args().nth(1).unwrap_or_else(|| "1.1.1.1".into());
     println!("{:?}", mtr_engine::PrivilegeInfo::discover());
-    let opts = TraceOptions { target, max_rounds: Some(3), ..Default::default() };
+    let proto = match std::env::args().nth(2).as_deref() { Some("udp") => mtr_engine::Protocol::Udp, _ => mtr_engine::Protocol::Icmp };
+    let opts = TraceOptions { target, protocol: proto, max_rounds: Some(3), ..Default::default() };
     let s = TraceSession::start(opts, Resolver::new()).expect("start");
     std::thread::sleep(Duration::from_secs(5));
     let snap = s.snapshot();

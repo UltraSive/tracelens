@@ -69,6 +69,11 @@ impl TraceSession {
         } else {
             PrivilegeMode::Unprivileged
         };
+        // trippy-core's unprivileged mode only works on macOS: on Linux the IPv4 ICMP path sets
+        // IP_HDRINCL on a datagram socket (ENOPROTOOPT) and UDP never sees time-exceeded replies.
+        if privilege_mode == PrivilegeMode::Unprivileged && cfg!(target_os = "linux") {
+            return Err(EngineError::Other(crate::permission_hint().into()));
+        }
         if privilege_mode == PrivilegeMode::Unprivileged && opts.protocol == Protocol::Tcp {
             return Err(EngineError::Other(
                 "TCP tracing requires elevated privileges (raw sockets)".into(),
@@ -93,11 +98,14 @@ impl TraceSession {
             .max_round_duration(Duration::from_millis(opts.interval_ms.max(100)).max(Duration::from_secs(1)))
             .max_rounds(opts.max_rounds)
             .max_samples(MAX_SAMPLES);
-        if let Some(port) = opts.port {
-            builder = builder.port_direction(trippy_core::PortDirection::FixedDest(
-                trippy_core::Port(port),
-            ));
-        }
+        use trippy_core::{Port, PortDirection};
+        builder = builder.port_direction(match (opts.protocol, opts.port) {
+            (Protocol::Icmp, _) => PortDirection::None,
+            (_, Some(port)) => PortDirection::FixedDest(Port(port)),
+            // classic traceroute: fixed source port, destination port varies per probe
+            (Protocol::Udp, None) => PortDirection::FixedSrc(Port(50000 + ident % 10000)),
+            (Protocol::Tcp, None) => PortDirection::FixedDest(Port(80)),
+        });
         let tracer = builder.build()?;
 
         let cancel = Arc::new(AtomicBool::new(false));

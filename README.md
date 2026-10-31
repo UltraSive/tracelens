@@ -36,13 +36,14 @@ Tracing needs raw sockets.
 
 | OS | What to do |
 |---|---|
-| Linux | `sudo setcap cap_net_raw+ep <binary>` (redo after every rebuild), **or** allow unprivileged ICMP for everyone: `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` (ICMP/UDP only). TCP mode needs the capability. |
+| Linux | `sudo setcap cap_net_raw+ep <binary>` (redo after every rebuild). trippy-core's unprivileged mode does not work on Linux, so `ping_group_range` does not help. |
 | macOS | ICMP works unprivileged. UDP/TCP may need `sudo`. |
 | Windows | Run as Administrator (a `requireAdministrator` manifest is the packaged answer). |
 
-For dev on Linux, the sysctl route is easiest since `tauri dev` rebuilds the binary
-(dropping file capabilities). For distribution, set the capability in the deb/rpm
-post-install script, or move probing into a small privileged helper process.
+`tauri dev` rebuilds the binary (dropping file capabilities), so on Linux re-run
+`sudo setcap cap_net_raw+ep target/debug/mtr-gui` after each Rust rebuild, or
+develop the UI against a release build. For distribution, set the capability in the
+deb/rpm post-install script, or move probing into a small privileged helper process.
 
 ## Notes
 
