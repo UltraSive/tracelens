@@ -44,13 +44,23 @@ ICMP/UDP/TCP probes, ECMP strategies, extra columns, path-change logging, and tr
 
 ## Install
 
-Download the latest installer from [Releases](https://github.com/UltraSive/tracelens/releases).
+**Linux / macOS**, one line:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/UltraSive/tracelens/main/install.sh | sh
+```
+
+It picks the right build for your system: the `.deb` (via apt) or `.rpm` (via dnf/zypper/yum) on Linux,
+and the app bundle into `/Applications` on macOS. Set `TRACELENS_VERSION=v0.1.0` to pin a release.
+[Read the script](install.sh) first if you prefer.
+
+**Windows**, or to install by hand: download the installer from [Releases](https://github.com/UltraSive/tracelens/releases).
 
 Tracing sends raw ICMP/UDP/TCP packets, which every OS restricts:
 
 | OS | What you need |
 |---|---|
-| **Linux** | The `.deb` / `.rpm` grant the binary `CAP_NET_RAW` on install, so no root needed. For the AppImage or a source build: `sudo setcap cap_net_raw+ep <path-to-binary>`. |
+| **Linux** | The `.deb` / `.rpm` grant the binary `CAP_NET_RAW` on install, so no root needed. For a source build: `sudo setcap cap_net_raw+ep <path-to-binary>`. A downloaded AppImage can't hold that permission (it runs from a `nosuid` mount); the install script unpacks it and grants it to the binary inside. |
 | **Windows** | The app asks for Administrator (UAC) on launch; Windows only allows raw sockets for admins. |
 | **macOS** | ICMP works without privileges. UDP/TCP modes may need `sudo`. Builds are unsigned: right-click, then **Open**, the first time. |
 
