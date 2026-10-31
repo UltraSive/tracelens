@@ -2,8 +2,7 @@
 
 Cross-platform MTR-style traceroute/ping GUI. The probing engine is
 [`trippy-core`](https://crates.io/crates/trippy-core) (ICMP/UDP/TCP, IPv4/IPv6,
-Linux/macOS/Windows), wrapped by a small shared crate so multiple frontends can
-be compared.
+Linux/macOS/Windows), wrapped by a small UI-independent crate.
 
 ```
 crates/engine/   shared engine: TraceSession, snapshots, report export (no UI deps)
